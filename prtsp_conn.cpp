@@ -40,7 +40,7 @@ void PRtspConn::OnRun()
 
 	for (;;)
 	{
-		ret = this->WaitEvent(events, msgs);
+		ret = this->WaitEvent(events, msgs, -1);
 		
 		if (ret < 0)
 		{
@@ -171,8 +171,6 @@ int PRtspConn::tcp_recv()
 			} 
 			else
 			{
-				P_LOG("%s", line.c_str());
-
 				m_req.push_back(line);
 			}
 		}
@@ -548,20 +546,20 @@ int PRtspConn::process_req(PRtspReq& req)
 		{
 			client = new PRtspClient(req.m_proUrl);
 			client->Start();
-			client->AddConn(this);
 
 			manager->RegistTask(req.m_proUrl, client);
 		}
 		else
 		{
 			client = dynamic_cast<PRtspClient*>(task);
-			client->AddConn(this);
 		}
+
+		client->AddConn(this);
+		client->AddRef();
 
 		manager->ReleaseLock();
 
 		m_rtspClient = client;
-		m_rtspClient->AddRef();
 	}
 		break;
 

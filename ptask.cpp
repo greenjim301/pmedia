@@ -135,11 +135,11 @@ int PTask::AddInEvent(int sock)
 	return 0;
 }
 
-int PTask::WaitEvent(struct epoll_event* outEvents, std::vector<PTaskMsg>& msgs)
+int PTask::WaitEvent(struct epoll_event* outEvents, std::vector<PTaskMsg>& msgs, int timeout)
 {
 	msgs.clear();
 
-	int ret = epoll_wait(m_efd, m_events, DEF_MAX_EVENTS, -1);
+	int ret = epoll_wait(m_efd, m_events, DEF_MAX_EVENTS, timeout);
 	int n = 0;
 
 	if (ret > 0)
@@ -169,4 +169,14 @@ int PTask::WaitEvent(struct epoll_event* outEvents, std::vector<PTaskMsg>& msgs)
 	}
 
 	return n;
+}
+
+void PTask::aquire_lock()
+{
+	pthread_mutex_lock(&m_mutex);
+}
+
+void PTask::release_lock()
+{
+	pthread_mutex_unlock(&m_mutex);
 }

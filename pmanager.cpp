@@ -60,3 +60,13 @@ void PManager::ReleaseLock()
 {
 	pthread_mutex_unlock(&PManager::m_mutex);
 }
+
+void PManager::SetTimer(PTaskTimer* timer)
+{
+	m_timer = timer;
+}
+
+PTaskTimer* PManager::GetTimer()
+{
+	return m_timer;
+}

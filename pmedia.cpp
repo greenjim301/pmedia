@@ -6,6 +6,8 @@
 
 #include "plog.h"
 #include "prtsp_server.h"
+#include "ptask_timer.h"
+#include "pmanager.h"
 
 int main(int argc, char *argv[])
 {
@@ -19,6 +21,12 @@ int main(int argc, char *argv[])
 	int port = atoi(argv[2]);	
 
 	PLog::Instance()->Init("media.log");
+
+	PTaskTimer* timer = new PTaskTimer;
+	
+	timer->Start();
+	
+	PManager::Instance()->SetTimer(timer);
 
 	PRtspServer* rtspServer = new PRtspServer(ip, port);
 	

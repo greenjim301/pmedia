@@ -47,7 +47,11 @@ public:
 	void DequeMsg(std::vector<PTaskMsg>& msgs);
 
 	int AddInEvent(int sock);
-	int WaitEvent(struct epoll_event* outEvents, std::vector<PTaskMsg>& msgs);
+	int WaitEvent(struct epoll_event* outEvents, std::vector<PTaskMsg>& msgs, int timeout);
+
+protected:
+	void aquire_lock();
+	void release_lock();
 
 private:
 	int m_ref;

@@ -59,4 +59,6 @@ private:
 
 	PRtspRsp  m_descbRsp;
 	PRtspRsp  m_playRsp;
+	int m_keepMethod;
+	int m_tiemout;
 };

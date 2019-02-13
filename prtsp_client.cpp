@@ -9,6 +9,7 @@
 #include <arpa/inet.h>
 #include "prtsp_conn.h"
 #include "pmanager.h"
+#include "ptask_timer.h"
 
 PRtspClient::PRtspClient(PString& url)
 	: m_url(url)
@@ -16,6 +17,8 @@ PRtspClient::PRtspClient(PString& url)
 	, m_port(0)
 	, m_cseq(0)
 	, m_tcpOff(0)
+	, m_tiemout(0)
+	, m_keepMethod(0)
 {
 	m_playRsp.m_ret = -1;
 	m_descbRsp.m_ret = -1;
@@ -144,7 +147,7 @@ int PRtspClient::send_rtsp_req(PRtspReq& req)
 
 	if (req.m_range.size())
 	{
-		n = sprintf(p, "Range: %s\r\n", req.m_session.c_str());
+		n = sprintf(p, "Range: %s\r\n", req.m_range.c_str());
 		p += n;
 	}
 
@@ -153,6 +156,8 @@ int PRtspClient::send_rtsp_req(PRtspReq& req)
 
 	int size = p - sBuf;
 	p = sBuf;
+
+	P_LOG("\r\n%s", p);
 
 	while (size > 0)
 	{
@@ -221,7 +226,7 @@ void PRtspClient::OnRun()
 
 	for (;;)
 	{
-		ret = this->WaitEvent(events, msgs);
+		ret = this->WaitEvent(events, msgs, -1);
 		if (ret < 0)
 		{
 			P_LOG("epoll wait err:%d", errno);
@@ -266,6 +271,8 @@ void PRtspClient::OnExit()
 	pm->AquireLock();
 	pm->UnregistTask(m_url);
 	pm->ReleaseLock();
+
+	pm->GetTimer()->UnregistTimer(this);
 
 	PTaskMsg msg(EN_CLIENT_EXIT, NULL);
 
@@ -552,6 +559,20 @@ int PRtspClient::process_rsp(PRtspRsp& rsp)
 	{
 	case rtsp_method::OPTIONS:
 	{
+		char* p = strstr(rsp.m_public.data(), "GET_PARAMETER");
+		if (p)
+		{
+			m_keepMethod = rtsp_method::GET_PARAMETER;
+		} 
+		else
+		{
+			p = strstr(rsp.m_public.data(), "SET_PARAMETER");
+			if (p)
+			{
+				m_keepMethod = rtsp_method::SET_PARAMETER;
+			}
+		}
+
 		PRtspReq req;
 
 		req.m_method = rtsp_method::DESCRIBE;
@@ -577,6 +598,16 @@ int PRtspClient::process_rsp(PRtspRsp& rsp)
 
 	case rtsp_method::SETUP:
 	{
+		if (!m_tiemout)
+		{
+			char* p = strstr(rsp.m_session.data(), "timeout=");
+			if (p)
+			{
+				p += strlen("timeout=");
+				m_tiemout = atoi(p);
+			}
+		}		
+
 		m_setupRsp[url] = rsp;
 
 		auto itPend = m_pendSetup.find(url);
@@ -620,9 +651,19 @@ int PRtspClient::process_rsp(PRtspRsp& rsp)
 			(*it)->on_rtsp_rsp(rsp);
 		}
 
+		if (m_tiemout && m_keepMethod)
+		{
+			PManager::Instance()->GetTimer()->RegistTimer(this, m_tiemout, true);
+		}
+
 		return 0;
 	}
 	break;
+
+	case rtsp_method::GET_PARAMETER:
+	case rtsp_method::SET_PARAMETER:
+		return 0;
+		break;
 
 	default:
 		break;
@@ -791,6 +832,19 @@ int PRtspClient::process_msg(PTaskMsg& msg)
 		{
 			return 0;
 		}		
+	}
+	break;
+
+	case EN_TASK_TIMER:
+	{
+		PRtspReq req;
+
+		req.m_method = m_keepMethod;
+		req.m_url = m_url;
+		req.m_cseq = ++m_cseq;
+		req.m_session = m_playRsp.m_session;
+		
+		return this->send_rtsp_req(req);
 	}
 	break;
 
