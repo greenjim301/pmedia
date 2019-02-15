@@ -9,8 +9,8 @@ SOURCE_1 = $(wildcard *.cpp)
 
 OBJECTS_1 = $(SOURCE_1:.cpp=.o) 
 
-CFLAGS = -g -O2 -std=c++11
-LDFLAGS = -lpthread
+CFLAGS = -g -O2 -std=c++11 -Iosip2/include
+LDFLAGS = -Losip2/lib -losipparser2 -lpthread
 
 .PHONY: all
 all: $(PROGRAM_1)

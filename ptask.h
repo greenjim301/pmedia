@@ -4,6 +4,7 @@
 #include <sys/epoll.h>
 #include <vector>
 #include <queue>
+#include <sys/eventfd.h>
 
 class PTaskMsg
 {
@@ -60,6 +61,6 @@ private:
 	struct epoll_event m_events[DEF_MAX_EVENTS];
 
 	std::queue<PTaskMsg> m_msgQue;
-	int m_pipe[2];
+	int m_eventfd;
 	bool m_exit;
 };

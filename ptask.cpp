@@ -21,18 +21,17 @@ PTask::PTask()
 	, m_exit(false)
 {
 	pthread_mutex_init(&m_mutex, NULL);
-	pipe(m_pipe);
-
+	
+	m_eventfd = eventfd(0, EFD_NONBLOCK);;
 	m_efd = epoll_create(1);
 
-	this->AddInEvent(m_pipe[0]);
+	this->AddInEvent(m_eventfd);
 }
 
 PTask::~PTask()
 {
 	close(m_efd);
-	close(m_pipe[0]);
-	close(m_pipe[1]);
+	close(m_eventfd);
 
 	pthread_mutex_destroy(&m_mutex);
 }
@@ -98,8 +97,8 @@ int PTask::EnqueMsg(PTaskMsg& msg)
 
 	pthread_mutex_unlock(&m_mutex);
 
-	char c = 0;
-	write(m_pipe[1], &c, 1);
+	uint64_t c = 1;
+	write(m_eventfd, &c, sizeof(c));
 
 	return 0;
 }
@@ -148,12 +147,13 @@ int PTask::WaitEvent(struct epoll_event* outEvents, std::vector<PTaskMsg>& msgs,
 		{
 			struct epoll_event& ev = m_events[i];
 
-			if (ev.data.fd == m_pipe[0])
+			if (ev.data.fd == m_eventfd)
 			{
-				char c;
-				read(m_pipe[0], &c, 1);
-
-				this->DequeMsg(msgs);
+				uint64_t c;
+				if (-1 != read(m_eventfd, &c, sizeof(c)))
+				{
+					this->DequeMsg(msgs);
+				}				
 			}
 			else
 			{

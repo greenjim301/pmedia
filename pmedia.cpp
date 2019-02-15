@@ -8,6 +8,7 @@
 #include "prtsp_server.h"
 #include "ptask_timer.h"
 #include "pmanager.h"
+#include "psip_server.h"
 
 int main(int argc, char *argv[])
 {
@@ -31,6 +32,14 @@ int main(int argc, char *argv[])
 	PRtspServer* rtspServer = new PRtspServer(ip, port);
 	
 	rtspServer->Start();
+
+	PString sipDomain = "34020100002000000001";
+	PString sipPwd = "12345678";
+	PString sipIP = "192.168.1.155";
+	uint16_t sipPort = 5060;
+	PSipServer* sipServer = new PSipServer(sipDomain, sipPwd, sipIP, sipPort);
+
+	sipServer->Start();
 
 	for (;;)
 	{
