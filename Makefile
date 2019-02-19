@@ -5,7 +5,8 @@ PROGRAM_1=media
 ##################################################################### #
 #3、指定您必须生成的工程文件
 
-SOURCE_1 = $(wildcard *.cpp)
+SOURCE_1 = $(wildcard *.cpp) \
+           $(wildcard tinyxml2/*.cpp)
 
 OBJECTS_1 = $(SOURCE_1:.cpp=.o) 
 

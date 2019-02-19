@@ -3,6 +3,9 @@
 #include <ctime>
 #include "osipparser2/osip_md5.h"
 #include "plog.h"
+#include "tinyxml2/tinyxml2.h"
+
+using namespace tinyxml2;
 
 static void cvt_to_hex(unsigned char* in, unsigned char* out)
 {
@@ -131,9 +134,35 @@ int PSipConn::process_req(osip_message_t* sip, sockaddr_in& in_addr, socklen_t i
 			}
 			else
 			{
-				this->clone_basic(sip, rsp, 200);
+				if (sip->contacts.nb_elt)
+				{
+					osip_list_clone(&sip->contacts, &rsp->contacts, (int(*)(void *, void **)) &osip_contact_clone);
+				}
+				else 
+				{
+					char* dest;
 
-				char temp[64];				
+					osip_to_to_str(sip->to, &dest);
+					osip_message_set_contact(rsp, dest);
+
+					osip_free(dest);
+				}
+
+				osip_header_t* expire;
+
+				osip_message_get_expires(sip, 0, &expire);
+				if (expire)
+				{
+					osip_message_set_expires(rsp, "7200");
+				}
+				else
+				{
+					osip_message_set_expires(rsp, expire->hvalue);
+				}
+
+				this->clone_basic(sip, rsp, 200);
+				
+				char temp[64];
 				time_t tt;
 				struct tm atm;
 
@@ -158,7 +187,18 @@ int PSipConn::process_req(osip_message_t* sip, sockaddr_in& in_addr, socklen_t i
 
 		if (body)
 		{
-			//P_LOG("body:\n%s\n", body->body);
+			XMLDocument doc;
+			XMLError ret = doc.Parse(body->body, body->length);
+			
+			if (ret)
+			{
+				P_LOG("xml parse err:%d", ret);
+			}
+			else
+			{
+				XMLText* textNode = doc.FirstChildElement("Notify")->FirstChildElement("CmdType")->FirstChild()->ToText();
+				P_LOG("cmd: %s", textNode->Value());
+			}
 		}
 
 		this->clone_basic(sip, rsp, 200);
