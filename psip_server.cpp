@@ -1,14 +1,16 @@
 #include "psip_server.h"
 #include "psip_conn.h"
 #include "plog.h"
+#include <ctime>
+#include "psip_client.h"
 
 PSipServer::PSipServer(PString& domain, PString& pwd, PString& ip, uint16_t port)
-	: m_doman(domain)
+	: m_domain(domain)
 	, m_passwd(pwd)
 	, m_ip(ip)
 	, m_port(port)
 {
-
+	std::srand(std::time(NULL));
 }
 
 void PSipServer::OnRun()
@@ -117,24 +119,38 @@ int PSipServer::udp_recv()
 	P_LOG("message:\n%s\n", dest);	
 	osip_free(dest);
 
-	PSipConn* conn;
-	PString username = sip->from->url->username;
-	auto it = m_sipConn.find(username);
+	if (MSG_IS_REQUEST(sip))
+	{
+		PSipConn* conn;
+		PString username = sip->from->url->username;
+		auto it = m_sipConn.find(username);
 
-	if (it == m_sipConn.end())
-	{
-		conn = new PSipConn(this);
-		m_sipConn[username] = conn;
-	} 
-	else
-	{
-		conn = it->second;		
+		if (it == m_sipConn.end())
+		{
+			conn = new PSipConn(this);
+			m_sipConn[username] = conn;
+		}
+		else
+		{
+			conn = it->second;
+		}
+
+		if (conn->process_req(sip, cAddr, cAddrLen))
+		{
+			m_sipConn.erase(username);
+			delete conn;
+		}
 	}
-
-	if (conn->process_req(sip, cAddr, cAddrLen))
+	else if (MSG_IS_STATUS_2XX(sip))
 	{
-		m_sipConn.erase(username);
-		delete conn;
+		PString callid = sip->call_id->number;
+		auto it = m_sipDialog.find(callid);
+
+		if (it != m_sipDialog.end())
+		{
+			sip_dialog* sd = it->second;
+			sd->sipClient->process_sip(sip, sd);
+		}
 	}
 
 	osip_message_free(sip);
@@ -149,7 +165,7 @@ int PSipServer::process_msg(PTaskMsg& msg)
 
 const PString& PSipServer::get_domain()
 {
-	return m_doman;
+	return m_domain;
 }
 
 const PString& PSipServer::get_passwd()
@@ -173,4 +189,89 @@ void PSipServer::send_sip_rsp(osip_message_t* rsp, sockaddr_in& in_addr, socklen
 
 	osip_free(dest);
 	osip_message_free(rsp);
+}
+
+void PSipServer::send_sip_rsp(osip_message_t* rsp, const char* ip, const char* port)
+{
+	sockaddr_in addr;
+	socklen_t addrLen = sizeof(addr);
+	uint16_t nPort = atoi(port);
+
+	addr.sin_family = AF_INET;
+	addr.sin_addr.s_addr = inet_addr(ip);
+	addr.sin_port = htons(nPort);
+
+	this->send_sip_rsp(rsp, addr, addrLen);	
+}
+
+PMediaClient* PSipServer::CreateClient(PString& url)
+{
+	if (memcmp(url.c_str(), "gb://", strlen("gb://")))
+	{
+		P_LOG("wrong gb url:%s", url.c_str());
+		return NULL;
+	}
+
+	char* p1 = url.data() + strlen("gb://");
+	char* p = strchr(p1, '/');
+
+	if (!p)
+	{
+		P_LOG("wrong url:%s", url.c_str());
+		return NULL;
+	}
+
+	PString device;
+
+	device.assign(p1, p - p1);
+
+	auto it = m_sipConn.find(device);
+	if (it == m_sipConn.end())
+	{
+		P_LOG("no dev:%s", url.c_str());
+		return NULL;
+	}
+
+	PString channel = ++p;
+	PSipConn* sipConn = it->second;
+
+	return sipConn->init_invite(channel, url);
+}
+
+PString& PSipServer::get_ip()
+{
+	return m_ip;
+}
+
+int PSipServer::get_port()
+{
+	return m_port;
+}
+
+void PSipServer::add_dialog(sip_dialog* dialog)
+{
+	m_sipDialog[dialog->callid] = dialog;
+}
+
+void PSipServer::del_dialog(PString& callid)
+{
+	auto it = m_sipDialog.find(callid);
+	if (it != m_sipDialog.end())
+	{
+		sip_dialog* p = it->second;
+
+		m_sipDialog.erase(it);
+		delete p;
+	}
+}
+
+sip_dialog* PSipServer::get_dialog(PString& callid)
+{
+	auto it = m_sipDialog.find(callid);
+	if (it != m_sipDialog.end())
+	{
+		return it->second;
+	}
+
+	return NULL;
 }

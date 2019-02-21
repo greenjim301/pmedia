@@ -4,7 +4,7 @@
 #include "pstring.h"
 #include "prtsp_comm.h"
 
-class PRtspClient;
+class PMediaClient;
 
 class PRtspConn : public PTask
 {
@@ -18,12 +18,6 @@ public:
 	int on_descb_rsp(PRtspRsp& rsp);
 	int on_rtsp_rsp(PRtspRsp& rsp);
 	int send_tcp_stream(char* buf, int size);
-
-private:
-	enum media_pro
-	{
-		RTSP,
-	};
 
 private:
 	int tcp_recv();
@@ -49,7 +43,7 @@ private:
 	int m_tcpOff;
 	int m_lastCSeq;
 	PString m_preUrl;
-	PRtspClient* m_rtspClient;
+	PMediaClient* m_meidaClient;
 
 	std::vector<PString> m_req;
 };

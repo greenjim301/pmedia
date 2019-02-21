@@ -6,14 +6,14 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include "prtsp_client.h"
 #include <arpa/inet.h>
 #include "pmanager.h"
+#include "pmedia_client.h"
 
 PRtspConn::PRtspConn(int fd)
 	: m_sock(fd)
 	, m_tcpOff(0)
-	, m_rtspClient(NULL)
+	, m_meidaClient(NULL)
 {
 	m_tcpBuf = (char*)malloc(DEF_BUF_SIZE);
 }
@@ -82,12 +82,12 @@ void PRtspConn::OnRun()
 
 void PRtspConn::OnExit()
 {
-	if (m_rtspClient)
+	if (m_meidaClient)
 	{
 		PTaskMsg msg(EN_CONN_EXIT, this);
-		m_rtspClient->EnqueMsg(msg);
+		m_meidaClient->EnqueMsg(msg);
 
-		m_rtspClient->DelRef();
+		m_meidaClient->DelRef();
 	}
 
 	PTask::OnExit();
@@ -342,6 +342,10 @@ int PRtspConn::get_pro_url(PRtspReq& req)
 	{
 		req.m_pro = media_pro::RTSP;
 	}
+	else if (!memcmp(pro.c_str(), "gb", strlen("gb")))
+	{
+		req.m_pro = media_pro::GB28181;
+	}
 
 	return 0;
 }
@@ -536,30 +540,23 @@ int PRtspConn::process_req(PRtspReq& req)
 		this->get_pro_url(req);
 
 		PManager* manager = PManager::Instance();
-		PRtspClient* client;
 
 		manager->AquireLock();
 
-		PTask* task = manager->GetTask(req.m_proUrl);
+		PMediaClient* client = manager->GetMediaClient(this, req.m_pro, req.m_proUrl);
 		
-		if (!task)
+		if (!client)
 		{
-			client = new PRtspClient(req.m_proUrl);
-			client->Start();
-
-			manager->RegistTask(req.m_proUrl, client);
-		}
-		else
-		{
-			client = dynamic_cast<PRtspClient*>(task);
+			P_LOG("get client err:%s", req.m_proUrl.c_str());
+			manager->ReleaseLock();
+			return -1;
 		}
 
-		client->AddConn(this);
 		client->AddRef();
 
 		manager->ReleaseLock();
 
-		m_rtspClient = client;
+		m_meidaClient = client;
 	}
 		break;
 
@@ -570,7 +567,7 @@ int PRtspConn::process_req(PRtspReq& req)
 
 		req.m_url = req.m_proUrl;
 
-		return m_rtspClient->on_rtsp_req(req, this);
+		return m_meidaClient->on_rtsp_req(req, this);
 	}
 		break;
 

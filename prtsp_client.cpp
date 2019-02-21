@@ -269,7 +269,7 @@ void PRtspClient::OnExit()
 	PManager* pm = PManager::Instance();
 
 	pm->AquireLock();
-	pm->UnregistTask(m_url);
+	pm->UnregistClient(m_url);
 	pm->ReleaseLock();
 
 	pm->GetTimer()->UnregistTimer(this);
@@ -288,10 +288,10 @@ void PRtspClient::OnExit()
 		(*it)->DelRef();
 	}
 	
-	PTask::OnExit();
+	PMediaClient::OnExit();
 }
 
-void PRtspClient::AddConn(PRtspConn* conn)
+void PRtspClient::GetMediaInfo(PRtspConn* conn)
 {
 	if (m_descbRsp.m_ret == 200)
 	{

@@ -1,9 +1,10 @@
 #include "psip_conn.h"
 #include "psip_server.h"
-#include <ctime>
 #include "osipparser2/osip_md5.h"
 #include "plog.h"
 #include "tinyxml2/tinyxml2.h"
+#include "pmanager.h"
+#include "psip_client.h"
 
 using namespace tinyxml2;
 
@@ -24,8 +25,17 @@ static void cvt_to_hex(unsigned char* in, unsigned char* out)
 
 PSipConn::PSipConn(PSipServer* server)
 	: m_server(server)
+	, m_contact(NULL)
+	, m_cseq(0)
 {
-	std::srand(std::time(NULL));
+}
+
+PSipConn::~PSipConn()
+{
+	if (m_contact)
+	{
+		osip_contact_free(m_contact);
+	}
 }
 
 void PSipConn::clone_basic(osip_message_t* sip, osip_message_t* rsp, int sCode)
@@ -40,7 +50,7 @@ void PSipConn::clone_basic(osip_message_t* sip, osip_message_t* rsp, int sCode)
 	osip_list_clone(&sip->vias, &rsp->vias, (int(*)(void *, void **)) &osip_via_clone);
 
 	char temp[64];
-	sprintf(temp, "pm%08lx", std::rand());
+	sprintf(temp, "%d", std::rand());
 	osip_to_set_tag(rsp->to, osip_strdup(temp));
 }
 
@@ -134,12 +144,24 @@ int PSipConn::process_req(osip_message_t* sip, sockaddr_in& in_addr, socklen_t i
 			}
 			else
 			{
+				if (m_contact)
+				{
+					osip_contact_free(m_contact);
+				}
+
 				if (sip->contacts.nb_elt)
 				{
+					osip_contact_t* contact;
+					osip_message_get_contact(sip, 0, &contact);
+					
+					osip_contact_clone(contact, &m_contact);
+
 					osip_list_clone(&sip->contacts, &rsp->contacts, (int(*)(void *, void **)) &osip_contact_clone);
 				}
 				else 
 				{
+					osip_contact_clone(sip->to, &m_contact);
+
 					char* dest;
 
 					osip_to_to_str(sip->to, &dest);
@@ -153,11 +175,11 @@ int PSipConn::process_req(osip_message_t* sip, sockaddr_in& in_addr, socklen_t i
 				osip_message_get_expires(sip, 0, &expire);
 				if (expire)
 				{
-					osip_message_set_expires(rsp, "7200");
+					osip_message_set_expires(rsp, expire->hvalue);
 				}
 				else
 				{
-					osip_message_set_expires(rsp, expire->hvalue);
+					osip_message_set_expires(rsp, "7200");
 				}
 
 				this->clone_basic(sip, rsp, 200);
@@ -180,7 +202,7 @@ int PSipConn::process_req(osip_message_t* sip, sockaddr_in& in_addr, socklen_t i
 			}
 		}
 	}
-	else if (MSG_IS_MESSAGE(sip))
+	else if (MSG_IS_MESSAGE(sip) && m_contact)
 	{
 		osip_body_t* body;
 		osip_message_get_body(sip, 0, &body);
@@ -213,4 +235,104 @@ int PSipConn::process_req(osip_message_t* sip, sockaddr_in& in_addr, socklen_t i
 	}
 
 	return 0;
+}
+
+PMediaClient* PSipConn::init_invite(PString& channel, PString& url)
+{
+	if (!m_contact)
+	{
+		P_LOG("no contact");
+		return NULL;
+	}
+
+	sip_dialog* sipDialog = new sip_dialog;
+
+	sipDialog->destUser = channel;
+	sipDialog->destHost = m_contact->url->host;
+	sipDialog->destPort = m_contact->url->port;
+
+	char temp[128];
+	const PString& sDomian = m_server->get_domain();
+
+	sprintf(temp, "SIP/2.0/UDP %s:%d", m_server->get_ip().c_str(), m_server->get_port());
+	sipDialog->via = temp;
+
+	sprintf(temp, "z9hG4bK%d", std::rand());
+	sipDialog->branch = temp;
+
+	sprintf(temp, "<sip:%s@%s:%d>;tag=%d", sDomian.c_str(), m_server->get_ip().c_str(), m_server->get_port(), std::rand());
+	sipDialog->localTag = temp;
+
+	sprintf(temp, "<sip:%s@%s:%s>", channel.c_str(), m_contact->url->host, m_contact->url->port);
+	sipDialog->remoteTag = temp;
+
+	sprintf(temp, "%d", std::rand());
+	sipDialog->callid = temp;
+
+	sipDialog->cseq = ++m_cseq;
+
+	sprintf(temp, "<sip:%s@%s:%d>", sDomian.c_str(), m_server->get_ip().c_str(), m_server->get_port());
+	sipDialog->localContact = temp;
+
+	osip_message_t* sip;
+
+	build_sip_msg(sip, sipDialog, sipDialog->cseq, "INVITE");
+
+	osip_message_set_content_type(sip, "Application/SDP");
+
+	sprintf(temp, "%s:0,%s:0", channel.c_str(), sDomian.c_str());
+	osip_message_set_subject(sip, temp);
+
+	PManager* pm = PManager::Instance();
+	int rtp_sock;
+	uint16_t rtp_port;
+	PString rtp_ip;
+
+	pm->CreateUdpSock(rtp_sock, rtp_ip, rtp_port);
+
+	char sdp[1024];
+	char* p = sdp;
+
+	int n = sprintf(p, "v=0\r\n");
+	p += n;
+
+	n = sprintf(p, "o=%s 0 0 IN IP4 %s\r\n", channel.c_str(), rtp_ip.c_str());
+	p += n;
+
+	n = sprintf(p, "s=Play\r\n");
+	p += n;
+
+	n = sprintf(p, "c=IN IP4 %s\r\n", rtp_ip.c_str());
+	p += n;
+
+	n = sprintf(p, "t=0 0\r\n");
+	p += n;
+
+	n = sprintf(p, "m=video %d RTP/AVP 96\r\n", rtp_port);
+	p += n;
+
+	n = sprintf(p, "a=rtpmap:96 PS/90000\r\n");
+	p += n;
+
+	n = sprintf(p, "a=recvonly\r\n");
+	p += n;
+
+	n = sprintf(p, "y=0999999999\r\n");
+	p += n;
+
+	int length = p - sdp;
+	sprintf(temp, "%d", length);
+
+	osip_message_set_content_length(sip, temp);	
+	osip_message_set_body(sip, sdp, length);
+
+	m_server->send_sip_rsp(sip, m_contact->url->host, m_contact->url->port);
+
+	PSipClient* sipClient = new PSipClient(rtp_sock, sipDialog->callid, url, m_server);
+	sipClient->Start();
+	sipDialog->sipClient = sipClient;
+
+	m_server->add_dialog(sipDialog);
+	
+	return sipClient;
 }

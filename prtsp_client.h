@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ptask.h"
+#include "pmedia_client.h"
 #include "pstring.h"
 #include "prtsp_comm.h"
 #include <map>
@@ -8,7 +8,7 @@
 
 class PRtspConn;
 
-class PRtspClient : public PTask
+class PRtspClient : public PMediaClient
 {
 public:
 	PRtspClient(PString& url);
@@ -16,8 +16,8 @@ public:
 
 	void OnRun();
 	void OnExit();
-	void AddConn(PRtspConn* conn);
-
+	
+	void GetMediaInfo(PRtspConn* conn);
 	int on_rtsp_req(PRtspReq& req, PRtspConn* conn);
 
 private:

@@ -2,6 +2,13 @@
 
 #include "pstring.h"
 #include <vector>
+#include "osipparser2/osip_parser.h"
+
+enum media_pro
+{
+	RTSP,
+	GB28181,
+};
 
 enum rtsp_method
 {
@@ -55,7 +62,7 @@ public:
 class PRtspRsp
 {
 public:
-	PRtspRsp() : m_cntLen(0){}
+	PRtspRsp() : m_ret(0), m_cntLen(0){}
 
 	int m_ret;
 	int m_cseq;
@@ -72,6 +79,25 @@ public:
 	std::vector<PString> m_sdp;
 };
 
+class PSipClient;
+
+struct sip_dialog
+{
+	PString callid;
+	PString destUser;
+	PString destHost;
+	PString destPort;
+	PString localContact;
+	PString via;
+	PString branch;
+	PString localTag;
+	PString remoteTag;
+	PSipClient* sipClient;
+	int cseq;
+};
+
 #define  DEF_BUF_SIZE   512 * 1024
 
 void skip_space(char*& p);
+
+void build_sip_msg(osip_message_t*& sip, sip_dialog* dlg, int cseq, const char* method);

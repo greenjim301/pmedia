@@ -40,6 +40,7 @@ int main(int argc, char *argv[])
 	PSipServer* sipServer = new PSipServer(sipDomain, sipPwd, sipIP, sipPort);
 
 	sipServer->Start();
+	PManager::Instance()->SetSipServer(sipServer);
 
 	for (;;)
 	{
