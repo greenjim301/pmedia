@@ -12,40 +12,29 @@
 
 int main(int argc, char *argv[])
 {
-    if(argc < 3)
-    {
-        printf("media ip port\n");
-        return -1;
-    }
-
-	PString ip = argv[1];
-	int port = atoi(argv[2]);	
-
-	PLog::Instance()->Init("media.log");
-
-	PTaskTimer* timer = new PTaskTimer;
-	
-	timer->Start();
-	
-	PManager::Instance()->SetTimer(timer);
-
-	PRtspServer* rtspServer = new PRtspServer(ip, port);
-	
-	rtspServer->Start();
-
 	PString sipDomain = "34020100002000000001";
 	PString sipPwd = "12345678";
 	PString sipIP = "192.168.1.155";
 	uint16_t sipPort = 5060;
+	int rtsp_port = 5544;	
+
+	PLog::Instance()->Init("media.log");
+	PManager* pm = PManager::Instance();
+	PTaskTimer* timer = new PTaskTimer;	
+	
+	timer->Start();	
+	pm->SetTimer(timer);
+
+	PRtspServer* rtspServer = new PRtspServer(sipIP, rtsp_port);	
+	
+	rtspServer->Start();
+
 	PSipServer* sipServer = new PSipServer(sipDomain, sipPwd, sipIP, sipPort);
 
 	sipServer->Start();
-	PManager::Instance()->SetSipServer(sipServer);
+	pm->SetSipServer(sipServer);
 
-	for (;;)
-	{
-		sleep(60);
-	}
+	pm->RunLoop();
 
 	PLog::Instance()->Exit();
 	

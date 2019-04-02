@@ -15,21 +15,24 @@ public:
 
 	PManager();
 
+	void Exit();
+	void RunLoop();
+
 	void AquireLock();
 	PMediaClient* GetMediaClient(PRtspConn* rtspConn, int pro, PString& url);
 	void RegistClient(PString& url, PMediaClient* task);
 	void UnregistClient(PString& url);
 	void ReleaseLock();
 	void SetTimer(PTaskTimer* timer);
-	PTaskTimer* GetTimer();
-	
+	PTaskTimer* GetTimer();	
 	void SetSipServer(PSipServer* s);
-
 	int CreateUdpSock(int& out_sock, PString& out_ip, uint16_t& out_port);
 
 private:
 	static PManager* m_manager;
 	static pthread_mutex_t m_mutex;
+	static pthread_cond_t  m_cond;
+	bool m_exit;
 
 	std::map<PString, PMediaClient*> m_urlClient;
 	PTaskTimer* m_timer;

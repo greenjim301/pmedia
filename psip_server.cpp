@@ -116,7 +116,7 @@ int PSipServer::udp_recv()
 	
 	osip_message_to_str(sip, &dest, &length);
 	
-	P_LOG("message:\n%s\n", dest);	
+	//P_LOG("message:\n%s\n", dest);	
 	osip_free(dest);
 
 	if (MSG_IS_REQUEST(sip))
@@ -179,7 +179,7 @@ void PSipServer::send_sip_rsp(osip_message_t* rsp, sockaddr_in& in_addr, socklen
 	size_t length = 0;
 
 	osip_message_to_str(rsp, &dest, &length);
-	P_LOG("message:\n%s\n", dest);
+	//P_LOG("message:\n%s\n", dest);
 
 	int ret = sendto(m_sock, dest, length, 0, (struct sockaddr*)&in_addr, in_addrlen);
 	if (ret != length)

@@ -198,6 +198,8 @@ int PSipConn::process_req(osip_message_t* sip, sockaddr_in& in_addr, socklen_t i
 
 				m_server->send_sip_rsp(rsp, in_addr, in_addrlen);
 
+				P_LOG("register ok");
+
 				return 0;
 			}
 		}
@@ -219,7 +221,7 @@ int PSipConn::process_req(osip_message_t* sip, sockaddr_in& in_addr, socklen_t i
 			else
 			{
 				XMLText* textNode = doc.FirstChildElement("Notify")->FirstChildElement("CmdType")->FirstChild()->ToText();
-				P_LOG("cmd: %s", textNode->Value());
+				//P_LOG("cmd: %s", textNode->Value());
 			}
 		}
 
@@ -256,9 +258,6 @@ PMediaClient* PSipConn::init_invite(PString& channel, PString& url)
 
 	sprintf(temp, "SIP/2.0/UDP %s:%d", m_server->get_ip().c_str(), m_server->get_port());
 	sipDialog->via = temp;
-
-	sprintf(temp, "z9hG4bK%d", std::rand());
-	sipDialog->branch = temp;
 
 	sprintf(temp, "<sip:%s@%s:%d>;tag=%d", sDomian.c_str(), m_server->get_ip().c_str(), m_server->get_port(), std::rand());
 	sipDialog->localTag = temp;
@@ -329,9 +328,9 @@ PMediaClient* PSipConn::init_invite(PString& channel, PString& url)
 	m_server->send_sip_rsp(sip, m_contact->url->host, m_contact->url->port);
 
 	PSipClient* sipClient = new PSipClient(rtp_sock, sipDialog->callid, url, m_server);
+	
 	sipClient->Start();
 	sipDialog->sipClient = sipClient;
-
 	m_server->add_dialog(sipDialog);
 	
 	return sipClient;

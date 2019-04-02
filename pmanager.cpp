@@ -7,6 +7,7 @@
 
 PManager* PManager::m_manager = NULL;
 pthread_mutex_t PManager::m_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t PManager::m_cond = PTHREAD_COND_INITIALIZER;
 
 PManager* PManager::Instance()
 {
@@ -38,6 +39,7 @@ PManager::PManager()
 	, m_rtpIP("192.168.1.155")
 	, m_minPort(10000)
 	, m_maxPort(20000)
+	, m_exit(false)
 {
 	m_curPort = m_minPort;
 }
@@ -165,3 +167,20 @@ int PManager::CreateUdpSock(int& out_sock, PString& out_ip, uint16_t& out_port)
 	return -1;
 }
 
+void PManager::Exit()
+{
+	this->AquireLock();
+	m_exit = true;
+	pthread_cond_signal(&PManager::m_cond);
+	this->ReleaseLock();
+}
+
+void PManager::RunLoop()
+{
+	this->AquireLock();
+	while (!m_exit)
+	{
+		pthread_cond_wait(&PManager::m_cond, &PManager::m_mutex);
+	}
+	this->ReleaseLock();
+}

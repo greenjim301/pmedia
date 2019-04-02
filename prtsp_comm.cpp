@@ -1,4 +1,5 @@
 #include "prtsp_comm.h"
+#include <cstdlib>
 
 void skip_space(char*& p)
 {
@@ -26,7 +27,8 @@ void build_sip_msg(osip_message_t*& sip, sip_dialog* dlg, int cseq, const char* 
 	osip_message_set_version(sip, osip_strdup("SIP/2.0"));
 
 	char temp[128];
-	sprintf(temp, "%s;branch=%s", dlg->via.c_str(), dlg->branch.c_str());
+
+	sprintf(temp, "%s;branch=z9hG4bK%d", dlg->via.c_str(), std::rand());
 	osip_message_set_via(sip, temp);
 
 	osip_message_set_from(sip, dlg->localTag.c_str());

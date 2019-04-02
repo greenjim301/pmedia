@@ -39,6 +39,6 @@ private:
 
 #define P_LOG(FORMAT_STRING, ...) \
 {\
-    PLog::Instance()->Log(FORMAT_STRING, ##__VA_ARGS__); \
+    PLog::Instance()->Log("%s,%d: " FORMAT_STRING, __FILE__,  __LINE__, ##__VA_ARGS__); \
 }			
 

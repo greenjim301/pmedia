@@ -89,7 +89,6 @@ struct sip_dialog
 	PString destPort;
 	PString localContact;
 	PString via;
-	PString branch;
 	PString localTag;
 	PString remoteTag;
 	PSipClient* sipClient;

@@ -16,6 +16,7 @@ PRtspConn::PRtspConn(int fd)
 	, m_meidaClient(NULL)
 {
 	m_tcpBuf = (char*)malloc(DEF_BUF_SIZE);
+	P_LOG("new rtsp conn");
 }
 
 PRtspConn::~PRtspConn()
@@ -520,6 +521,7 @@ int PRtspConn::send_tcp_stream(char* p, int size)
 int PRtspConn::process_req(PRtspReq& req)
 {
 	m_lastCSeq = req.m_cseq;
+	P_LOG("rtsp req:%d url:%s", req.m_method, req.m_url.c_str());
 
 	switch (req.m_method)
 	{
@@ -563,6 +565,11 @@ int PRtspConn::process_req(PRtspReq& req)
 	case rtsp_method::SETUP:
 	case rtsp_method::PLAY:
 	{
+		if (!m_meidaClient)
+		{
+			return -1;
+		}
+
 		this->get_pro_url(req);
 
 		req.m_url = req.m_proUrl;
