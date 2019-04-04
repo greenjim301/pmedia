@@ -198,7 +198,7 @@ int PSipConn::process_req(osip_message_t* sip, sockaddr_in& in_addr, socklen_t i
 
 				m_server->send_sip_rsp(rsp, in_addr, in_addrlen);
 
-				P_LOG("register ok");
+				P_LOG("%s register ok, expire:%s", sip->from->url->username, expire->hvalue);
 
 				return 0;
 			}

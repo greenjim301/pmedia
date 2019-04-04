@@ -8,6 +8,7 @@
 #include <map>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <list>
 
 class PRtspConn;
 class PSipServer;
@@ -27,11 +28,20 @@ public:
 
 	void process_sip(osip_message_t* sip, sip_dialog* dlg);
 
+	struct es_info
+	{
+		int es_id;
+		int type;
+	};
+
+	void on_es_info(std::list<es_info>& es_info_lst);
+
 private:
 	int udp_recv();
 	int process_msg(PTaskMsg& msg);
 	void process_pend_rtp();
 	void process_cur_rtp();
+	void nal_send(const uint8_t *buf, int size, int last, uint32_t ts);
 
 private:
 	int m_sock;
@@ -68,4 +78,13 @@ private:
 	std::map<uint16_t, RtpPack> m_pendRtpPacks;
 
 	uint8_t* m_packBuf;
+	uint8_t* m_psBuf;
+	int m_psoff;
+	int64_t m_last_ts;
+
+	char m_sendBuf[2048];
+	int m_audio_payload;
+	int m_audioSeq;
+	int m_videoSeq;
+	FILE* m_fp;
 };
