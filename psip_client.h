@@ -86,5 +86,4 @@ private:
 	int m_audio_payload;
 	int m_audioSeq;
 	int m_videoSeq;
-	FILE* m_fp;
 };

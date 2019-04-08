@@ -40,7 +40,6 @@ PSipClient::PSipClient(int sock, PString& callid, PString& url, PSipServer* serv
 	, m_audio_payload(-1)
 	, m_audioSeq(0)
 	, m_videoSeq(0)
-	, m_fp(NULL)
 	, m_last_ts(AV_NOPTS_VALUE)
 	, m_psoff(0)
 {
@@ -251,11 +250,6 @@ void PSipClient::OnExit()
 	{
 		(*it)->EnqueMsg(msg);
 		(*it)->DelRef();
-	}
-
-	if (m_fp)
-	{
-		fclose(m_fp);
 	}
 
 	PMediaClient::OnExit();
@@ -995,10 +989,10 @@ void PSipClient::nal_send(const uint8_t *buf, int size, int last, uint32_t ts)
 
 		avio_w8(p_buf, '$');
 		avio_w8(p_buf, 0);
-		avio_wb16(p_buf, size + 12);
+		avio_wb16(p_buf, MAX_PAYLOAD_SIZE + 12);
 
 		avio_w8(p_buf, RTP_VERSION << 6);
-		avio_w8(p_buf, (payload & 0x7f) | ((last & 0x01) << 7));
+		avio_w8(p_buf, payload & 0x7f);
 		avio_wb16(p_buf, m_videoSeq);
 		avio_wb32(p_buf, ts);
 		avio_wb32(p_buf, 0);
@@ -1021,13 +1015,7 @@ void PSipClient::nal_send(const uint8_t *buf, int size, int last, uint32_t ts)
 
 		while (size + header_size > MAX_PAYLOAD_SIZE) {
 			memcpy(&p_buf[header_size], buf, MAX_PAYLOAD_SIZE - header_size);
-			
-			ptmp = (uint8_t*)m_sendBuf + 2;
-			avio_wb16(ptmp, MAX_PAYLOAD_SIZE + 12);
-			
-			ptmp = (uint8_t*)m_sendBuf + 5;
-			avio_w8(ptmp, payload & 0x7f);
-			
+						
 			ptmp = (uint8_t*)m_sendBuf + 6;
 			avio_wb16(ptmp, m_videoSeq);
 
