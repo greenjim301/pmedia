@@ -10,12 +10,6 @@
 #define  RTP_VERSION  2
 #define MAX_PAYLOAD_SIZE 1400
 
-#define AV_RB16(x)  ((((const uint8_t*)(x))[0] << 8) | ((const uint8_t*)(x))[1])
-#define AV_RB32(x)  ((((const uint8_t*)(x))[0] << 24) | \
-    (((const uint8_t*)(x))[1] << 16) | \
-    (((const uint8_t*)(x))[2] <<  8) | \
-    ((const uint8_t*)(x))[3])
-
 #define AV_NOPTS_VALUE          ((int64_t)UINT64_C(0x8000000000000000))
 
 #define PACK_START_CODE             ((unsigned int)0x000001ba)

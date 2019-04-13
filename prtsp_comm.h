@@ -8,6 +8,7 @@ enum media_pro
 {
 	RTSP,
 	GB28181,
+	PRTMP,
 };
 
 enum rtsp_method
@@ -96,6 +97,26 @@ struct sip_dialog
 };
 
 #define  DEF_BUF_SIZE   512 * 1024
+
+#define AV_RB16(x)  ((((const uint8_t*)(x))[0] << 8) | ((const uint8_t*)(x))[1])
+
+#define AV_RB24(x)  ((((const uint8_t*)(x))[0] << 16) | \
+    (((const uint8_t*)(x))[1] << 8) | \
+    ((const uint8_t*)(x))[2])
+
+#define AV_RB32(x)  ((((const uint8_t*)(x))[0] << 24) | \
+    (((const uint8_t*)(x))[1] << 16) | \
+    (((const uint8_t*)(x))[2] <<  8) | \
+    ((const uint8_t*)(x))[3])
+
+#define AV_RL16(x) ((((const uint8_t*)(x))[1] << 8) | \
+((const uint8_t*)(x))[0])
+
+#define AV_RL32(x)                                \
+     (((uint32_t)((const uint8_t*)(x))[3] << 24) |    \
+                (((const uint8_t*)(x))[2] << 16) |    \
+                (((const uint8_t*)(x))[1] <<  8) |    \
+                 ((const uint8_t*)(x))[0])
 
 void skip_space(char*& p);
 

@@ -4,6 +4,7 @@
 #include "plog.h"
 #include <unistd.h>
 #include "pmedia_client.h"
+#include "prtmp_client.h"
 
 PManager* PManager::m_manager = NULL;
 pthread_mutex_t PManager::m_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -80,6 +81,14 @@ PMediaClient* PManager::GetMediaClient(PRtspConn* rtspConn, int pro, PString& ur
 				this->RegistClient(url, cl);
 				cl->GetMediaInfo(rtspConn);
 			}
+		}
+		else if (pro == media_pro::PRTMP)
+		{
+			cl = new PRtmpClient(url);
+
+			cl->Start();
+			this->RegistClient(url, cl);
+			cl->GetMediaInfo(rtspConn);
 		}
 	}
 

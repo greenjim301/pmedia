@@ -10,8 +10,8 @@ SOURCE_1 = $(wildcard *.cpp) \
 
 OBJECTS_1 = $(SOURCE_1:.cpp=.o) 
 
-CFLAGS = -g -fpermissive -std=c++11 -Iosip2/include
-LDFLAGS = -Losip2/lib -losipparser2 -lpthread
+CFLAGS = -g -fpermissive -std=c++11 -Iosip2/include -Ilibrtmp/include
+LDFLAGS = -Losip2/lib -losipparser2 -Llibrtmp/lib -lrtmp -lpthread
 
 .PHONY: all
 all: $(PROGRAM_1)

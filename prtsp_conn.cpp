@@ -347,6 +347,10 @@ int PRtspConn::get_pro_url(PRtspReq& req)
 	{
 		req.m_pro = media_pro::GB28181;
 	}
+	else if (!memcmp(pro.c_str(), "rtmp", strlen("rtmp")))
+	{
+		req.m_pro = media_pro::PRTMP;
+	}
 
 	return 0;
 }
