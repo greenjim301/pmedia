@@ -17,7 +17,8 @@ public:
 
 private:
 	void parse_flv(uint8_t* inbuf, int insize, int& inoffset);
-	void on_sdp_info(int flv_codecid, int channels, int sample_rate);
+	void on_sdp_info(int flv_codecid, int channels, int sample_rate, 
+		uint8_t audioObjectType, uint8_t samplingFrequencyIndex);
 
 private:
 	PString m_url;

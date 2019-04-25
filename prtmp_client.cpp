@@ -216,6 +216,13 @@ enum {
 
 static const uint8_t start_sequence[] = { 0, 0, 0, 1 };
 
+static int const samplingFrequencyTable[16] = {
+	96000, 88200, 64000, 48000,
+	44100, 32000, 24000, 22050,
+	16000, 12000, 11025, 8000,
+	7350, 0, 0, 0
+};
+
 void PRtmpClient::parse_flv(uint8_t* inbuf, int insize, int& inoffset)
 {
 	uint8_t* pb = inbuf;
@@ -271,48 +278,104 @@ void PRtmpClient::parse_flv(uint8_t* inbuf, int insize, int& inoffset)
 
 		next = size + (pb - inbuf);
 
-		if (type == FLV_TAG_TYPE_AUDIO) {
+		if (type == FLV_TAG_TYPE_AUDIO) 
+		{
 			flags = avio_r8(pb);
 			size--;
 			size -= 4;
 
-			int bits_per_coded_sample = (flags & FLV_AUDIO_SAMPLESIZE_MASK) ? 16 : 8;
 			int flv_codecid = flags & FLV_AUDIO_CODECID_MASK;
-			int channels = (flags & FLV_AUDIO_CHANNEL_MASK) == FLV_STEREO ? 2 : 1;
-			int sample_rate = 44100 << ((flags & FLV_AUDIO_SAMPLERATE_MASK) >>
-				FLV_AUDIO_SAMPLERATE_OFFSET) >> 3;
 
-// 			printf("size:%d bits:%d codec:%d channel:%d sample:%d\n", 
-// 				size, bits_per_coded_sample, flv_codecid, channels, sample_rate);
-
-			this->on_sdp_info(flv_codecid, channels, sample_rate);
-
-			if (flv_codecid > FLV_CODECID_NELLYMOSER && flv_codecid < FLV_CODECID_SPEEX)
+			if (flv_codecid == FLV_CODECID_AAC)
 			{
-				uint32_t ts = dts * m_audiosample / 1000;
-				int len = size;
-				int m = 1;
-				uint8_t* p_rtp = (uint8_t*)m_sendbuf;
+				int aactype = avio_r8(pb);
+				size--;
 
-				avio_w8(p_rtp, '$');
-				avio_w8(p_rtp, 2);
-				avio_wb16(p_rtp, len + 12);
-
-				avio_w8(p_rtp, RTP_VERSION << 6);
-				avio_w8(p_rtp, (m_audiopayload & 0x7f) | ((m & 0x01) << 7));
-				avio_wb16(p_rtp, m_audioseq);
-				avio_wb32(p_rtp, ts);
-				avio_wb32(p_rtp, 0);
-
-				m_audioseq = (m_audioseq + 1) & 0xffff;
-
-				memcpy(m_sendbuf + 4 + 12, pb, len);
-
-				for (auto it = m_pendPlay.begin(); it != m_pendPlay.end(); ++it)
+				if (aactype == 0)
 				{
-					(*it)->send_tcp_stream(m_sendbuf, len + 4 + 12);
+					int audioObj = ((pb[0] & 0xf8) >> 3);//5bit
+					int sampleIndex;
+					int sampleRate;
+					int channelCfg;
+
+					if (audioObj != 31)
+					{
+						sampleIndex = ((pb[0] & 0x7) << 1) | ((pb[1] & 0x80) >> 7);//4bit
+
+						if (sampleIndex != 0xf)
+						{
+							sampleRate = samplingFrequencyTable[sampleIndex];
+							channelCfg = ((pb[1] & 0x78) >> 3);
+
+							printf("audioObj:%d sampleRate:%d channelCfg:%d\n", audioObj, sampleRate, channelCfg);
+
+							this->on_sdp_info(flv_codecid, channelCfg, sampleRate, audioObj, sampleIndex);
+						}
+					}
 				}
-			} 
+				else if (m_audioready)
+				{
+					uint32_t ts = dts * m_audiosample / 1000;
+					int len = size;
+					int m = 1;
+					uint8_t* p_rtp = (uint8_t*)m_sendbuf;
+
+					avio_w8(p_rtp, '$');
+					avio_w8(p_rtp, 2);
+					avio_wb16(p_rtp, len + 12 + 4);
+
+					avio_w8(p_rtp, RTP_VERSION << 6);
+					avio_w8(p_rtp, (m_audiopayload & 0x7f) | ((m & 0x01) << 7));
+					avio_wb16(p_rtp, m_audioseq);
+					avio_wb32(p_rtp, ts);
+					avio_wb32(p_rtp, 0);
+
+					avio_w8(p_rtp, 0x00);
+					avio_w8(p_rtp, 0x10);
+					avio_w8(p_rtp, (len & 0x1fe0) >> 5);
+					avio_w8(p_rtp, (len & 0x1f) << 3);
+
+					m_audioseq = (m_audioseq + 1) & 0xffff;
+
+					memcpy(m_sendbuf + 4 + 12 + 4, pb, len);
+
+					for (auto it = m_pendPlay.begin(); it != m_pendPlay.end(); ++it)
+					{
+						(*it)->send_tcp_stream(m_sendbuf, len + 4 + 12 + 4);
+					}
+				}			
+			}
+			else
+			{
+				this->on_sdp_info(flv_codecid, 0, 0, 0,  0);
+
+				if (flv_codecid > FLV_CODECID_NELLYMOSER && flv_codecid < FLV_CODECID_AAC)
+				{
+					uint32_t ts = dts * m_audiosample / 1000;
+					int len = size;
+					int m = 1;
+					uint8_t* p_rtp = (uint8_t*)m_sendbuf;
+
+					avio_w8(p_rtp, '$');
+					avio_w8(p_rtp, 2);
+					avio_wb16(p_rtp, len + 12);
+
+					avio_w8(p_rtp, RTP_VERSION << 6);
+					avio_w8(p_rtp, (m_audiopayload & 0x7f) | ((m & 0x01) << 7));
+					avio_wb16(p_rtp, m_audioseq);
+					avio_wb32(p_rtp, ts);
+					avio_wb32(p_rtp, 0);
+
+					m_audioseq = (m_audioseq + 1) & 0xffff;
+
+					memcpy(m_sendbuf + 4 + 12, pb, len);
+
+					for (auto it = m_pendPlay.begin(); it != m_pendPlay.end(); ++it)
+					{
+						(*it)->send_tcp_stream(m_sendbuf, len + 4 + 12);
+					}
+				}
+			}
 		}
 		else if (type == FLV_TAG_TYPE_VIDEO) {
 			flags = avio_r8(pb);
@@ -326,7 +389,7 @@ void PRtmpClient::parse_flv(uint8_t* inbuf, int insize, int& inoffset)
 				goto skip;
 			}
 
-			this->on_sdp_info(codecid, 0, 0);
+			this->on_sdp_info(codecid, 0, 0, 0, 0);
 
 			int packet_type = avio_r8(pb);
 			size--;
@@ -455,7 +518,8 @@ int PRtmpClient::process_msg(PTaskMsg& msg)
 	return 0;
 }
 
-void PRtmpClient::on_sdp_info(int flv_codecid, int channels, int sample_rate)
+void PRtmpClient::on_sdp_info(int flv_codecid, int channels, int sample_rate,
+	uint8_t audioObjectType, uint8_t samplingFrequencyIndex)
 {
 	if (m_descbRsp.m_ret == 200)
 	{
@@ -477,6 +541,7 @@ void PRtmpClient::on_sdp_info(int flv_codecid, int channels, int sample_rate)
 	}
 	else if (flv_codecid == FLV_CODECID_AAC)
 	{
+		m_audiopayload = 97;
 		m_audiocodecid = flv_codecid;
 		m_audioready = true;
 		m_audiosample = sample_rate;
@@ -547,6 +612,33 @@ void PRtmpClient::on_sdp_info(int flv_codecid, int channels, int sample_rate)
 		else if (m_audiocodecid == FLV_CODECID_PCM_MULAW)
 		{
 			tmp = "m=audio 0 RTP/AVP 0";
+			m_descbRsp.m_sdp.push_back(tmp);
+
+			tmp = "a=control:trackID=1";
+			m_descbRsp.m_sdp.push_back(tmp);
+
+			tmp = "a=recvonly";
+			m_descbRsp.m_sdp.push_back(tmp);
+		}
+		else if (m_audiocodecid == FLV_CODECID_AAC)
+		{
+			tmp = "m=audio 0 RTP/AVP 97";
+			m_descbRsp.m_sdp.push_back(tmp);
+
+			char ctemp[128];
+			sprintf(ctemp, "a=rtpmap:97 MPEG4-GENERIC/%d/%d", sample_rate, channels);
+
+			tmp = ctemp;
+			m_descbRsp.m_sdp.push_back(tmp);
+
+			uint8_t audioSpecificConfig[2];
+			audioSpecificConfig[0] = (audioObjectType << 3) | (samplingFrequencyIndex >> 1);
+			audioSpecificConfig[1] = (samplingFrequencyIndex << 7) | (channels << 3);
+
+			sprintf(ctemp, "a=fmtp:97 profile-level-id=15;mode=AAC-hbr;sizelength=13;indexlength=3;indexdeltalength=3;config=%02x%02x",
+				audioSpecificConfig[0], audioSpecificConfig[1]);
+
+			tmp = ctemp;
 			m_descbRsp.m_sdp.push_back(tmp);
 
 			tmp = "a=control:trackID=1";
