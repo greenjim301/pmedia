@@ -6,10 +6,6 @@
 #include <unistd.h>
 #include "osipparser2/sdp_message.h"
 
-#define RTP_FLAG_MARKER 0x2 ///< RTP marker bit was set for this packet
-#define  RTP_VERSION  2
-#define MAX_PAYLOAD_SIZE 1400
-
 #define AV_NOPTS_VALUE          ((int64_t)UINT64_C(0x8000000000000000))
 
 #define PACK_START_CODE             ((unsigned int)0x000001ba)
@@ -232,32 +228,7 @@ void PSipClient::OnExit()
 
 	m_server->del_dialog(m_callid);
 
-	PTaskMsg msg(EN_CLIENT_EXIT, NULL);
-
-	for (auto it = m_addConn.begin(); it != m_addConn.end(); ++it)
-	{
-		(*it)->EnqueMsg(msg);
-		(*it)->DelRef();
-	}
-
-	for (auto it = m_pendPlay.begin(); it != m_pendPlay.end(); ++it)
-	{
-		(*it)->EnqueMsg(msg);
-		(*it)->DelRef();
-	}
-
 	PMediaClient::OnExit();
-}
-
-void PSipClient::GetMediaInfo(PRtspConn* conn)
-{
-	if (m_descbRsp.m_ret == 200)
-	{
-		conn->on_descb_rsp(m_descbRsp);
-	}
-
-	conn->AddRef();
-	m_addConn.insert(conn);
 }
 
 int PSipClient::on_rtsp_req(PRtspReq& req, PRtspConn* conn)
@@ -524,34 +495,6 @@ void PSipClient::process_pend_rtp()
 	}
 }
 
-static int avio_r8(uint8_t*& pb)
-{
-	int val = *pb;
-	++pb;
-	return val;
-}
-
-static unsigned int avio_rb16(uint8_t*& s)
-{
-	unsigned int val;
-	val = avio_r8(s) << 8;
-	val |= avio_r8(s);
-	return val;
-}
-
-static void avio_skip(uint8_t*& pb, int64_t offset)
-{
-	pb += offset;
-}
-
-static unsigned int avio_rb32(uint8_t*& s)
-{
-	unsigned int val;
-	val = avio_rb16(s) << 16;
-	val |= avio_rb16(s);
-	return val;
-}
-
 static long mpegps_psm_parse(uint8_t*& pb, PSipClient* sipClient)
 {
 	int psm_length, ps_info_length, es_map_length;
@@ -791,70 +734,6 @@ redo:
 	return len;
 }
 
-static void avio_w8(uint8_t*& s, int b)
-{
-	*s++ = b;
-}
-
-static void avio_wb16(uint8_t*& s, unsigned int val)
-{
-	avio_w8(s, (int)val >> 8);
-	avio_w8(s, (uint8_t)val);
-}
-
-static void avio_wb32(uint8_t*& s, unsigned int val)
-{
-	avio_w8(s, val >> 24);
-	avio_w8(s, (uint8_t)(val >> 16));
-	avio_w8(s, (uint8_t)(val >> 8));
-	avio_w8(s, (uint8_t)val);
-}
-
-static const uint8_t * ff_avc_find_startcode_internal(
-	const uint8_t *p, const uint8_t *end)
-{
-	const uint8_t *a = p + 4 - ((intptr_t)p & 3);
-
-	for (end -= 3; p < a && p < end; p++) {
-		if (p[0] == 0 && p[1] == 0 && p[2] == 1)
-			return p;
-	}
-
-	for (end -= 3; p < end; p += 4) {
-		uint32_t x = *(const uint32_t*)p;
-		//      if ((x - 0x01000100) & (~x) & 0x80008000) // little endian
-		//      if ((x - 0x00010001) & (~x) & 0x00800080) // big endian
-		if ((x - 0x01010101) & (~x) & 0x80808080) { // generic
-			if (p[1] == 0) {
-				if (p[0] == 0 && p[2] == 1)
-					return p;
-				if (p[2] == 0 && p[3] == 1)
-					return p + 1;
-			}
-			if (p[3] == 0) {
-				if (p[2] == 0 && p[4] == 1)
-					return p + 2;
-				if (p[4] == 0 && p[5] == 1)
-					return p + 3;
-			}
-		}
-	}
-
-	for (end += 3; p < end; p++) {
-		if (p[0] == 0 && p[1] == 0 && p[2] == 1)
-			return p;
-	}
-
-	return end + 3;
-}
-
-static const uint8_t * ff_avc_find_startcode(const uint8_t *p, const uint8_t *end)
-{
-	const uint8_t *out = ff_avc_find_startcode_internal(p, end);
-	if (p < out && out < end && !out[-1]) out--;
-	return out;
-}
-
 void PSipClient::process_cur_rtp()
 {
 	uint8_t* buf = m_packBuf;
@@ -913,137 +792,19 @@ redo:
 
 		if (pts != m_last_ts)
 		{
-			const uint8_t *r, *end = m_psBuf + m_psoff;
-
-			r = ff_avc_find_startcode(m_psBuf, end);
-
-			while (r < end) {
-				const uint8_t *r1;
-
-				while (!*(r++));
-				r1 = ff_avc_find_startcode(r, end);
-
-				nal_send(r, r1 - r, r1 == end, m_last_ts);
-				r = r1;
-			}
+			parse_send_es(m_psBuf, m_psoff, m_last_ts, 96, m_sendBuf, m_videoSeq, m_pendPlay);
 
 			m_last_ts = pts;
 			m_psoff = 0;
 		}
 		
 		memcpy(m_psBuf + m_psoff, pb, len);
-		m_psoff += len;
-
-// 		P_LOG("startcode:%x, len:%d, ts:%lld", startcode, len, pts);
-// 
-// 		if (!m_fp)
-// 		{
-// 			m_fp = fopen("test.264", "wb");
-// 		}
-// 
-// 		fwrite(pb, 1, len, m_fp);		
+		m_psoff += len;	
 	}
 
 	/* skip packet */
 	avio_skip(pb, len);
 	goto redo;
-}
-
-void PSipClient::nal_send(const uint8_t *buf, int size, int last, uint32_t ts)
-{
-	//P_LOG("size:%d, last:%d", size, last);
-
-	int payload = 96;
-
-	if (size <= MAX_PAYLOAD_SIZE)
-	{
-		uint8_t* p_rtp = (uint8_t*)m_sendBuf;
-
-		avio_w8(p_rtp, '$');
-		avio_w8(p_rtp, 0);
-		avio_wb16(p_rtp, size + 12);
-
-		avio_w8(p_rtp, RTP_VERSION << 6);
-		avio_w8(p_rtp, (payload & 0x7f) | ((last & 0x01) << 7));
-		avio_wb16(p_rtp, m_videoSeq);
-		avio_wb32(p_rtp, ts);
-		avio_wb32(p_rtp, 0);
-
-		m_videoSeq = (m_videoSeq + 1) & 0xffff;
-
-		memcpy(m_sendBuf + 4 + 12, buf, size);
-
-		for (auto it = m_pendPlay.begin(); it != m_pendPlay.end(); ++it)
-		{
-			(*it)->send_tcp_stream(m_sendBuf, size + 4 + 12);
-		}
-	}
-	else {
-		uint8_t* p_buf = (uint8_t*)m_sendBuf;
-
-		avio_w8(p_buf, '$');
-		avio_w8(p_buf, 0);
-		avio_wb16(p_buf, MAX_PAYLOAD_SIZE + 12);
-
-		avio_w8(p_buf, RTP_VERSION << 6);
-		avio_w8(p_buf, payload & 0x7f);
-		avio_wb16(p_buf, m_videoSeq);
-		avio_wb32(p_buf, ts);
-		avio_wb32(p_buf, 0);
-
-		int flag_byte, header_size;
-
-		uint8_t type = buf[0] & 0x1F;
-		uint8_t nri = buf[0] & 0x60;
-
-		p_buf[0] = 28;        /* FU Indicator; Type = 28 ---> FU-A */
-		p_buf[0] |= nri;
-		p_buf[1] = type;
-		p_buf[1] |= 1 << 7;
-		buf += 1;
-		size -= 1;
-
-		flag_byte = 1;
-		header_size = 2;
-		uint8_t* ptmp;
-
-		while (size + header_size > MAX_PAYLOAD_SIZE) {
-			memcpy(&p_buf[header_size], buf, MAX_PAYLOAD_SIZE - header_size);
-						
-			ptmp = (uint8_t*)m_sendBuf + 6;
-			avio_wb16(ptmp, m_videoSeq);
-
-			m_videoSeq = (m_videoSeq + 1) & 0xffff;
-
-			for (auto it = m_pendPlay.begin(); it != m_pendPlay.end(); ++it)
-			{
-				(*it)->send_tcp_stream(m_sendBuf, MAX_PAYLOAD_SIZE + 4 + 12);
-			}
-			
-			buf += MAX_PAYLOAD_SIZE - header_size;
-			size -= MAX_PAYLOAD_SIZE - header_size;
-			p_buf[flag_byte] &= ~(1 << 7);
-		}
-
-		p_buf[flag_byte] |= 1 << 6;
-		memcpy(&p_buf[header_size], buf, size);
-
-		ptmp = (uint8_t*)m_sendBuf + 2;
-		avio_wb16(ptmp, size + header_size + 12);
-
-		ptmp = (uint8_t*)m_sendBuf + 5;
-		avio_w8(ptmp, (payload & 0x7f) | ((last & 0x01) << 7));
-
-		ptmp = (uint8_t*)m_sendBuf + 6;
-		avio_wb16(ptmp, m_videoSeq);
-
-		m_videoSeq = (m_videoSeq + 1) & 0xffff;
-
-		for (auto it = m_pendPlay.begin(); it != m_pendPlay.end(); ++it)
-		{
-			(*it)->send_tcp_stream(m_sendBuf, size + header_size + 4 + 12);
-		}
-	}
 }
 
 PSipClient::RtpPack::RtpPack(uint16_t iseq, int iflags, uint16_t its, uint8_t* ibuf, int ilen)

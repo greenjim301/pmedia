@@ -17,7 +17,6 @@ public:
 	void OnRun();
 	void OnExit();
 	
-	void GetMediaInfo(PRtspConn* conn);
 	int on_rtsp_req(PRtspReq& req, PRtspConn* conn);
 
 private:
@@ -53,11 +52,7 @@ private:
 	std::map<uint32_t, SRtspReq> m_reqMap;
 	std::map<PString, PRtspRsp> m_setupRsp;
 	std::map<PString, std::set<PRtspConn*> > m_pendSetup;
-	std::set<PRtspConn*>  m_pendPlay;
 	
-	std::set<PRtspConn*>  m_addConn;
-
-	PRtspRsp  m_descbRsp;
 	PRtspRsp  m_playRsp;
 	int m_keepMethod;
 	int m_tiemout;

@@ -21,8 +21,6 @@ PRtspConn::PRtspConn(int fd)
 
 PRtspConn::~PRtspConn()
 {
-	P_LOG("rtsp conn release");
-
 	close(m_sock);
 	free(m_tcpBuf);
 }
@@ -83,6 +81,8 @@ void PRtspConn::OnRun()
 
 void PRtspConn::OnExit()
 {
+	P_LOG("rtsp conn exit");
+
 	if (m_meidaClient)
 	{
 		PTaskMsg msg(EN_CONN_EXIT, this);

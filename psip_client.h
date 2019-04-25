@@ -23,7 +23,6 @@ public:
 	void OnRun();
 	void OnExit();
 
-	void GetMediaInfo(PRtspConn* conn);
 	int on_rtsp_req(PRtspReq& req, PRtspConn* conn);
 
 	void process_sip(osip_message_t* sip, sip_dialog* dlg);
@@ -48,9 +47,6 @@ private:
 	PString m_callid;
 	PString m_url;
 	PSipServer* m_server;
-	std::set<PRtspConn*>  m_addConn;
-	std::set<PRtspConn*>  m_pendPlay;
-	PRtspRsp  m_descbRsp;
 
 	sockaddr_in m_cAddr;
 	socklen_t m_cAddrLen;
