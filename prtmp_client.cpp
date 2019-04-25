@@ -9,7 +9,11 @@ PRtmpClient::PRtmpClient(PString& ulr)
 	: m_url(ulr)
 	, m_bfirst(true)
 	, m_videoseq(0)
-	, m_nAudio(0)
+	, m_audioseq(0)
+	, m_videoready(false)
+	, m_audioready(false)
+	, m_sdptry(0)
+	, m_audiocodecid(0)
 {
 
 }
@@ -196,6 +200,20 @@ enum {
 	FLV_FRAME_VIDEO_INFO_CMD = 5 << FLV_VIDEO_FRAMETYPE_OFFSET, ///< video info/command frame
 };
 
+enum {
+	FLV_CODECID_PCM = 0,
+	FLV_CODECID_ADPCM = 1 << FLV_AUDIO_CODECID_OFFSET,
+	FLV_CODECID_MP3 = 2 << FLV_AUDIO_CODECID_OFFSET,
+	FLV_CODECID_PCM_LE = 3 << FLV_AUDIO_CODECID_OFFSET,
+	FLV_CODECID_NELLYMOSER_16KHZ_MONO = 4 << FLV_AUDIO_CODECID_OFFSET,
+	FLV_CODECID_NELLYMOSER_8KHZ_MONO = 5 << FLV_AUDIO_CODECID_OFFSET,
+	FLV_CODECID_NELLYMOSER = 6 << FLV_AUDIO_CODECID_OFFSET,
+	FLV_CODECID_PCM_ALAW = 7 << FLV_AUDIO_CODECID_OFFSET,
+	FLV_CODECID_PCM_MULAW = 8 << FLV_AUDIO_CODECID_OFFSET,
+	FLV_CODECID_AAC = 10 << FLV_AUDIO_CODECID_OFFSET,
+	FLV_CODECID_SPEEX = 11 << FLV_AUDIO_CODECID_OFFSET,
+};
+
 static const uint8_t start_sequence[] = { 0, 0, 0, 1 };
 
 void PRtmpClient::parse_flv(uint8_t* inbuf, int insize, int& inoffset)
@@ -256,6 +274,7 @@ void PRtmpClient::parse_flv(uint8_t* inbuf, int insize, int& inoffset)
 		if (type == FLV_TAG_TYPE_AUDIO) {
 			flags = avio_r8(pb);
 			size--;
+			size -= 4;
 
 			int bits_per_coded_sample = (flags & FLV_AUDIO_SAMPLESIZE_MASK) ? 16 : 8;
 			int flv_codecid = flags & FLV_AUDIO_CODECID_MASK;
@@ -263,7 +282,37 @@ void PRtmpClient::parse_flv(uint8_t* inbuf, int insize, int& inoffset)
 			int sample_rate = 44100 << ((flags & FLV_AUDIO_SAMPLERATE_MASK) >>
 				FLV_AUDIO_SAMPLERATE_OFFSET) >> 3;
 
-			printf("bits:%d codec:%d channel:%d sample:%d\n", bits_per_coded_sample, flv_codecid, channels, sample_rate);
+// 			printf("size:%d bits:%d codec:%d channel:%d sample:%d\n", 
+// 				size, bits_per_coded_sample, flv_codecid, channels, sample_rate);
+
+			this->on_sdp_info(flv_codecid, channels, sample_rate);
+
+			if (flv_codecid > FLV_CODECID_NELLYMOSER && flv_codecid < FLV_CODECID_SPEEX)
+			{
+				uint32_t ts = dts * m_audiosample / 1000;
+				int len = size;
+				int m = 1;
+				uint8_t* p_rtp = (uint8_t*)m_sendbuf;
+
+				avio_w8(p_rtp, '$');
+				avio_w8(p_rtp, 2);
+				avio_wb16(p_rtp, len + 12);
+
+				avio_w8(p_rtp, RTP_VERSION << 6);
+				avio_w8(p_rtp, (m_audiopayload & 0x7f) | ((m & 0x01) << 7));
+				avio_wb16(p_rtp, m_audioseq);
+				avio_wb32(p_rtp, ts);
+				avio_wb32(p_rtp, 0);
+
+				m_audioseq = (m_audioseq + 1) & 0xffff;
+
+				memcpy(m_sendbuf + 4 + 12, pb, len);
+
+				for (auto it = m_pendPlay.begin(); it != m_pendPlay.end(); ++it)
+				{
+					(*it)->send_tcp_stream(m_sendbuf, len + 4 + 12);
+				}
+			} 
 		}
 		else if (type == FLV_TAG_TYPE_VIDEO) {
 			flags = avio_r8(pb);
@@ -277,7 +326,7 @@ void PRtmpClient::parse_flv(uint8_t* inbuf, int insize, int& inoffset)
 				goto skip;
 			}
 
-			this->on_sdp_info(m_nAudio);
+			this->on_sdp_info(codecid, 0, 0);
 
 			int packet_type = avio_r8(pb);
 			size--;
@@ -406,53 +455,110 @@ int PRtmpClient::process_msg(PTaskMsg& msg)
 	return 0;
 }
 
-void PRtmpClient::on_sdp_info(int nAudio)
+void PRtmpClient::on_sdp_info(int flv_codecid, int channels, int sample_rate)
 {
 	if (m_descbRsp.m_ret == 200)
 	{
 		return;
 	}
 
-	m_descbRsp.m_ret = 200;
-	m_descbRsp.m_descb = "OK";
-	m_descbRsp.m_cntType = "application/sdp";
-	m_descbRsp.m_cntBase = m_url;
-
-	PString tmp = "v=0";
-	m_descbRsp.m_sdp.push_back(tmp);
-
-	tmp = "o=- 2252478537 2252478537 IN IP4 0.0.0.0";
-	m_descbRsp.m_sdp.push_back(tmp);
-
-	tmp = "s=RTSP Session/2.0";
-	m_descbRsp.m_sdp.push_back(tmp);
-
-	tmp = "c=IN IP4 0.0.0.0";
-	m_descbRsp.m_sdp.push_back(tmp);
-
-	tmp = "t=0 0";
-	m_descbRsp.m_sdp.push_back(tmp);
-
-	tmp = "a=control:*";
-	m_descbRsp.m_sdp.push_back(tmp);
-
-	tmp = "a=range:npt=now-";
-	m_descbRsp.m_sdp.push_back(tmp);
-
-	tmp = "m=video 0 RTP/AVP 96";
-	m_descbRsp.m_sdp.push_back(tmp);
-
-	tmp = "a=control:trackID=0";
-	m_descbRsp.m_sdp.push_back(tmp);
-
-	tmp = "a=rtpmap:96 H264/90000";
-	m_descbRsp.m_sdp.push_back(tmp);
-
-	tmp = "a=recvonly";
-	m_descbRsp.m_sdp.push_back(tmp);
-
-	for (auto it = m_addConn.begin(); it != m_addConn.end(); ++it)
+	if (flv_codecid == FLV_CODECID_H264)
 	{
-		(*it)->on_descb_rsp(m_descbRsp);
+		++m_sdptry;
+		m_videoready = true;
+	}
+	else if (flv_codecid == FLV_CODECID_PCM_ALAW || flv_codecid == FLV_CODECID_PCM_MULAW)
+	{
+		m_audiopayload = flv_codecid == FLV_CODECID_PCM_ALAW ? 8 : 0;
+		m_audiocodecid = flv_codecid;
+		m_audioready = true;
+		m_audiosample = 8000;
+		m_audiochannel = 1;
+	}
+	else if (flv_codecid == FLV_CODECID_AAC)
+	{
+		m_audiocodecid = flv_codecid;
+		m_audioready = true;
+		m_audiosample = sample_rate;
+		m_audiochannel = channels;
+	}
+	else 
+	{
+		P_LOG("unkonw codec:%d", flv_codecid);
+		return;
+	}
+
+	if ( (m_videoready && m_audioready)
+		|| m_sdptry > 2 
+		)
+	{
+		m_descbRsp.m_ret = 200;
+		m_descbRsp.m_descb = "OK";
+		m_descbRsp.m_cntType = "application/sdp";
+		m_descbRsp.m_cntBase = m_url;
+
+		PString tmp = "v=0";
+		m_descbRsp.m_sdp.push_back(tmp);
+
+		tmp = "o=- 2252478537 2252478537 IN IP4 0.0.0.0";
+		m_descbRsp.m_sdp.push_back(tmp);
+
+		tmp = "s=RTSP Session/2.0";
+		m_descbRsp.m_sdp.push_back(tmp);
+
+		tmp = "c=IN IP4 0.0.0.0";
+		m_descbRsp.m_sdp.push_back(tmp);
+
+		tmp = "t=0 0";
+		m_descbRsp.m_sdp.push_back(tmp);
+
+		tmp = "a=control:*";
+		m_descbRsp.m_sdp.push_back(tmp);
+
+		tmp = "a=range:npt=now-";
+		m_descbRsp.m_sdp.push_back(tmp);
+
+		if (m_videoready)
+		{
+			tmp = "m=video 0 RTP/AVP 96";
+			m_descbRsp.m_sdp.push_back(tmp);
+
+			tmp = "a=control:trackID=0";
+			m_descbRsp.m_sdp.push_back(tmp);
+
+			tmp = "a=rtpmap:96 H264/90000";
+			m_descbRsp.m_sdp.push_back(tmp);
+
+			tmp = "a=recvonly";
+			m_descbRsp.m_sdp.push_back(tmp);
+		}
+
+		if (m_audiocodecid == FLV_CODECID_PCM_ALAW)
+		{
+			tmp = "m=audio 0 RTP/AVP 8";
+			m_descbRsp.m_sdp.push_back(tmp);
+
+			tmp = "a=control:trackID=1";
+			m_descbRsp.m_sdp.push_back(tmp);
+
+			tmp = "a=recvonly";
+			m_descbRsp.m_sdp.push_back(tmp);
+		}
+		else if (m_audiocodecid == FLV_CODECID_PCM_MULAW)
+		{
+			tmp = "m=audio 0 RTP/AVP 0";
+			m_descbRsp.m_sdp.push_back(tmp);
+
+			tmp = "a=control:trackID=1";
+			m_descbRsp.m_sdp.push_back(tmp);
+
+			tmp = "a=recvonly";
+			m_descbRsp.m_sdp.push_back(tmp);
+		}
+		
+		for (auto it = m_addConn.begin(); it != m_addConn.end(); ++it)
+		{
+			(*it)->on_descb_rsp(m_descbRsp);
+		}
 	}
 }
