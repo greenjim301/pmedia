@@ -426,12 +426,12 @@ void PRtmpClient::parse_flv(uint8_t* inbuf, int insize, int& inoffset)
 				for (int i = 0; i < numPps; ++i)
 				{
 					int ppsLen = avio_rb16(pb);
-					avio_skip(pb, ppsLen);
 
 					memcpy(tempbuf, start_sequence, sizeof(start_sequence));
 					memcpy(&tempbuf[4], pb, ppsLen);
 					parse_send_es(tempbuf, ppsLen + 4, dts, 96, m_sendbuf, m_videoseq, m_pendPlay);
 
+					avio_skip(pb, ppsLen);
 					printf("ppsLen:%d\n", ppsLen);
 				}
 
